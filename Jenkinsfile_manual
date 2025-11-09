@@ -1,0 +1,39 @@
+pipeline {
+    agent any
+    parameters {
+        string(name: 'BRANCH_TO_DEPLOY', defaultValue: 'main', description: 'Which branch to deploy? (main/dev)')
+    }
+
+    environment {
+        APP_PORT = BRANCH_TO_DEPLOY == "main" ? "3000" : "3001"
+        IMAGE_TAG = BRANCH_TO_DEPLOY == "main" ? "nodemain:v1.0" : "nodedev:v1.0"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: "${params.BRANCH_TO_DEPLOY}", url: 'https://github.com/Torrex123/cid-lab.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh "docker build -t ${IMAGE_TAG} ."
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh """
+                    existing_container=\$(docker ps -aqf "name=${params.BRANCH_TO_DEPLOY}") || true
+                    if [ ! -z "\$existing_container" ]; then
+                        docker stop \$existing_container || true
+                        docker rm \$existing_container || true
+                    fi
+
+                    docker run -d -p ${APP_PORT}:3000 --name ${params.BRANCH_TO_DEPLOY} ${IMAGE_TAG}
+                """
+            }
+        }
+    }
+}
