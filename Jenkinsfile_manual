@@ -1,15 +1,25 @@
 pipeline {
     agent any
     parameters {
-        string(name: 'BRANCH_TO_DEPLOY', defaultValue: 'main', description: 'Which branch to deploy? (main/dev)')
-    }
-
-    environment {
-        APP_PORT = BRANCH_TO_DEPLOY == "main" ? "3000" : "3001"
-        IMAGE_TAG = BRANCH_TO_DEPLOY == "main" ? "nodemain:v1.0" : "nodedev:v1.0"
+        choice(name: 'BRANCH_TO_DEPLOY', choices: ['main', 'dev'], description: 'Which branch to deploy?')
     }
 
     stages {
+        stage('Setup Environment') {
+            steps {
+                script {
+                    if (params.BRANCH_TO_DEPLOY == "main") {
+                        env.APP_PORT = "3000"
+                        env.IMAGE_TAG = "nodemain:v1.0"
+                    } else {
+                        env.APP_PORT = "3001"
+                        env.IMAGE_TAG = "nodedev:v1.0"
+                    }
+                    echo "Deploying ${params.BRANCH_TO_DEPLOY} on port ${env.APP_PORT}"
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 git branch: "${params.BRANCH_TO_DEPLOY}", url: 'https://github.com/Torrex123/cid-lab.git'
@@ -18,20 +28,18 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${IMAGE_TAG} ."
+                bat "docker build -t ${env.IMAGE_TAG} ."
             }
         }
 
         stage('Deploy') {
             steps {
-                sh """
-                    existing_container=\$(docker ps -aqf "name=${params.BRANCH_TO_DEPLOY}") || true
-                    if [ ! -z "\$existing_container" ]; then
-                        docker stop \$existing_container || true
-                        docker rm \$existing_container || true
-                    fi
-
-                    docker run -d -p ${APP_PORT}:3000 --name ${params.BRANCH_TO_DEPLOY} ${IMAGE_TAG}
+                bat """
+                for /f "tokens=*" %%i in ('docker ps -aqf "name=${params.BRANCH_TO_DEPLOY}"') do (
+                    docker stop %%i
+                    docker rm %%i
+                )
+                docker run -d -p ${env.APP_PORT}:3000 --name ${params.BRANCH_TO_DEPLOY} ${env.IMAGE_TAG}
                 """
             }
         }
